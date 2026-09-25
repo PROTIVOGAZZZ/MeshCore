@@ -1,4 +1,7 @@
 #include "SSD1306Display.h"
+#ifdef CYRILLIC_SUPPORT
+  #include "glcdfont6x8.h"
+#endif
 
 bool SSD1306Display::i2c_probe(TwoWire& wire, uint8_t addr) {
   wire.beginTransmission(addr);
@@ -60,10 +63,18 @@ void SSD1306Display::startFrame(ColorVal bkg) {
   _color = SSD1306_WHITE;
   display.setTextColor(_color);
   display.setTextSize(1);
+#ifdef CYRILLIC_SUPPORT
+  display.setFont(&glcdfont6x8);   // CP1251 GFXfont: Latin + Cyrillic
+  _font_size = 1;
+#else
   display.cp437(true);         // Use full 256 char 'Code Page 437' font
+#endif
 }
 
 void SSD1306Display::setTextSize(int sz) {
+#ifdef CYRILLIC_SUPPORT
+  _font_size = sz;
+#endif
   display.setTextSize(sz);
 }
 
@@ -73,10 +84,21 @@ void SSD1306Display::setColor(ColorVal c) {
 }
 
 void SSD1306Display::setCursor(int x, int y) {
+#ifdef CYRILLIC_SUPPORT
+  _cursor_y_raw = y;
+  // GFXfont positions the cursor at the text baseline; shift down so callers keep top-left semantics
+  display.setCursor(x, y + (_font_size * 7));
+#else
   display.setCursor(x, y);
+#endif
 }
 
 void SSD1306Display::print(const char* str) {
+#ifdef CYRILLIC_SUPPORT
+  char cp[256];
+  translateUTF8ToBlocks(cp, str, sizeof(cp));
+  str = cp;
+#endif
   display.print(str);
 }
 
@@ -93,6 +115,11 @@ void SSD1306Display::drawXbm(int x, int y, const uint8_t* bits, int w, int h) {
 }
 
 uint16_t SSD1306Display::getTextWidth(const char* str) {
+#ifdef CYRILLIC_SUPPORT
+  char cp[256];
+  translateUTF8ToBlocks(cp, str, sizeof(cp));
+  str = cp;
+#endif
   int16_t x1, y1;
   uint16_t w, h;
   display.getTextBounds(str, 0, 0, &x1, &y1, &w, &h);
