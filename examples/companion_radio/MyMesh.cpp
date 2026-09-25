@@ -999,7 +999,9 @@ void MyMesh::begin(bool has_display) {
 
   resetContacts();
   _store->loadContacts(this);
-  bootstrapRTCfromContacts();
+  if (bootstrapRTCfromContacts() > 0) {
+    dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);   // persist repaired lastmod values
+  }
   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure Andy's public channel
   _store->loadChannels(this);
 
@@ -1274,6 +1276,14 @@ void MyMesh::handleCmdFrame(size_t len) {
     uint32_t curr = getRTCClock()->getCurrentTime();
     if (secs >= curr) {
       getRTCClock()->setCurrentTime(secs);
+      writeOKFrame();
+    } else if (secs >= RTC_TIME_SANE_MIN && secs < RTC_TIME_SANE_MAX && curr - secs > 3600) {
+      // Device clock ran far ahead (corrupt RTC): accept the phone's time and pull contact lastmod
+      // back with it, so bootstrapRTCfromContacts() can't restore the bad time after a reboot.
+      getRTCClock()->setCurrentTime(secs);
+      if (clampContactsLastmod(secs) > 0) {
+        dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+      }
       writeOKFrame();
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);

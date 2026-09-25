@@ -22,6 +22,10 @@
 #define MAX_PATH_SIZE        64
 #define MAX_TRANS_UNIT      255
 
+// Sanity bounds for wall-clock time (unix seconds). Anything outside is treated as a corrupt clock.
+#define RTC_TIME_SANE_MIN   1700000000UL   // 14 Nov 2023
+#define RTC_TIME_SANE_MAX   2082758400UL   // 1 Jan 2036
+
 #if MESH_DEBUG && ARDUINO
   #include <Arduino.h>
   #define MESH_DEBUG_PRINT(F, ...) Serial.printf("DEBUG: " F, ##__VA_ARGS__)

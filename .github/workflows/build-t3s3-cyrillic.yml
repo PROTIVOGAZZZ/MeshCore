@@ -19,7 +19,7 @@ jobs:
 
       - name: Build Firmware
         env:
-          FIRMWARE_VERSION: PowerSaving17.1.2-cyr
+          FIRMWARE_VERSION: PowerSaving17.1.2-cyr2
         run: |
           mkdir -p out
           /usr/bin/env bash build.sh build-firmware LilyGo_T3S3_sx1262_companion_radio_ble

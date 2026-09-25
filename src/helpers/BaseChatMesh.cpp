@@ -55,16 +55,32 @@ void BaseChatMesh::sendAckTo(const ContactInfo& dest, const uint8_t* ack_hash, u
   }
 }
 
-void BaseChatMesh::bootstrapRTCfromContacts() {
+int BaseChatMesh::bootstrapRTCfromContacts() {
+  // A lastmod beyond RTC_TIME_SANE_MAX was stamped by a corrupt clock (e.g. a bit flip -> year 2094).
+  // Ignore such values, otherwise they would push the clock into the future again on every boot.
   uint32_t latest = 0;
   for (int i = 0; i < num_contacts; i++) {
-    if (contacts[i].lastmod > latest) {
+    if (contacts[i].lastmod > latest && contacts[i].lastmod < RTC_TIME_SANE_MAX) {
       latest = contacts[i].lastmod;
     }
   }
-  if (latest != 0) {
+  uint32_t now = getRTCClock()->getCurrentTime();
+  if (latest != 0 && (latest > now || now >= RTC_TIME_SANE_MAX)) {
     getRTCClock()->setCurrentTime(latest + 1);
   }
+  now = getRTCClock()->getCurrentTime();
+  return clampContactsLastmod(now < RTC_TIME_SANE_MAX ? now : latest);
+}
+
+int BaseChatMesh::clampContactsLastmod(uint32_t max_time) {
+  int n = 0;
+  for (int i = 0; i < num_contacts; i++) {
+    if (contacts[i].lastmod > max_time) {
+      contacts[i].lastmod = max_time;
+      n++;
+    }
+  }
+  return n;
 }
 
 ContactInfo* BaseChatMesh::allocateContactSlot(bool transient_only) {

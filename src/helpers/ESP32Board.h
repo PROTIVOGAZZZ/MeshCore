@@ -213,21 +213,34 @@ public:
 
 static RTC_NOINIT_ATTR uint32_t _rtc_backup_time;
 static RTC_NOINIT_ATTR uint32_t _rtc_backup_magic;
+static RTC_NOINIT_ATTR uint32_t _rtc_backup_check;   // ~_rtc_backup_time: detects bit flips after brownout / power glitch
 #define RTC_BACKUP_MAGIC  0xAA55CC33
 #define RTC_TIME_MIN      1772323200  // 1 Mar 2026
 
 class ESP32RTCClock : public mesh::RTCClock {
 public:
   ESP32RTCClock() { }
+  static bool backupValid() {
+    return _rtc_backup_magic == RTC_BACKUP_MAGIC && _rtc_backup_check == ~_rtc_backup_time
+        && _rtc_backup_time > RTC_TIME_MIN && _rtc_backup_time < RTC_TIME_SANE_MAX;
+  }
+  static void saveBackup(uint32_t t) {
+    _rtc_backup_magic = 0;          // invalidate while the pair is being updated
+    _rtc_backup_time = t;
+    _rtc_backup_check = ~t;
+    _rtc_backup_magic = RTC_BACKUP_MAGIC;
+  }
   void begin() {
     esp_reset_reason_t reason = esp_reset_reason();
     if (reason == ESP_RST_DEEPSLEEP) {
-      return;  // ESP-IDF preserves system time across deep sleep
+      time_t now;
+      time(&now);
+      if ((uint32_t)now < RTC_TIME_SANE_MAX) return;  // ESP-IDF preserves system time across deep sleep
     }
     // All other resets (power-on, crash, WDT, brownout) lose system time.
     // Restore from RTC backup if valid, otherwise use hardcoded seed.
     struct timeval tv;
-    if (_rtc_backup_magic == RTC_BACKUP_MAGIC && _rtc_backup_time > RTC_TIME_MIN) {
+    if (backupValid()) {
       tv.tv_sec = _rtc_backup_time;
     } else {
       tv.tv_sec = RTC_TIME_MIN;
@@ -245,15 +258,19 @@ public:
     tv.tv_sec = time;
     tv.tv_usec = 0;
     settimeofday(&tv, NULL);
-    _rtc_backup_time = time;
-    _rtc_backup_magic = RTC_BACKUP_MAGIC;
+    if (time < RTC_TIME_SANE_MAX) saveBackup(time);
   }
   void tick() override {
     time_t now;
     time(&now);
-    if (now > RTC_TIME_MIN && (uint32_t)now != _rtc_backup_time) {
-      _rtc_backup_time = (uint32_t)now;
-      _rtc_backup_magic = RTC_BACKUP_MAGIC;
+    if ((uint32_t)now >= RTC_TIME_SANE_MAX && backupValid()) {
+      // system time jumped past the sanity bound at runtime: fall back to the last good second
+      struct timeval tv = { (time_t)_rtc_backup_time, 0 };
+      settimeofday(&tv, NULL);
+      return;
+    }
+    if (now > RTC_TIME_MIN && (uint32_t)now < RTC_TIME_SANE_MAX && (uint32_t)now != _rtc_backup_time) {
+      saveBackup((uint32_t)now);
     }
   }
 };
