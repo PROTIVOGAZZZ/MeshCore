@@ -1,4 +1,4 @@
-name: Build T3S3 Companion BLE (Cyrillic)
+name: Build T3S3 / Heltec V3 Companion BLE (Cyrillic)
 
 on:
   workflow_dispatch:
@@ -9,6 +9,12 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - LilyGo_T3S3_sx1262_companion_radio_ble
+          - Heltec_v3_companion_radio_ble
     steps:
 
       - name: Clone Repo
@@ -22,10 +28,10 @@ jobs:
           FIRMWARE_VERSION: PowerSaving17.1.2-cyr3
         run: |
           mkdir -p out
-          /usr/bin/env bash build.sh build-firmware LilyGo_T3S3_sx1262_companion_radio_ble
+          /usr/bin/env bash build.sh build-firmware ${{ matrix.target }}
 
       - name: Upload Workflow Artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: LilyGo_T3S3_sx1262_companion_radio_ble-cyrillic
+          name: ${{ matrix.target }}-cyrillic
           path: out
