@@ -2198,7 +2198,9 @@ void MyMesh::begin() {
   // setCurrentTime() marks the clock reliable, so ask before bootstrapping.
   const bool rtc_was_reliable = getRTCClock()->isTimeReliable();
   uint32_t rtc_before_contacts = getRTCClock()->getCurrentTime();
-  bootstrapRTCfromContacts();
+  if (bootstrapRTCfromContacts() > 0) {
+    dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);   // persist repaired lastmod values
+  }
   uint32_t rtc_after_contacts = getRTCClock()->getCurrentTime();
   if (!rtc_was_reliable && rtc_after_contacts > rtc_before_contacts &&
       rtc_after_contacts > MIN_VALID_TS && rtc_after_contacts < MAX_VALID_TS) {
@@ -2580,6 +2582,9 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else {
       if (len >= 5) { // has optional 'since' param
         memcpy(&_iter_filter_since, &cmd_frame[1], 4);
+        // App may hold a 'since' stamped by a runaway clock (e.g. 2099): nothing would ever be newer,
+        // so new/updated contacts would never reach the app. Resync everything in that case.
+        if (_iter_filter_since > getRTCClock()->getCurrentTime()) _iter_filter_since = 0;
       } else {
         _iter_filter_since = 0;
       }
@@ -2627,8 +2632,16 @@ void MyMesh::handleCmdFrame(size_t len) {
     uint32_t secs;
     memcpy(&secs, &cmd_frame[1], 4);
     uint32_t curr = getRTCClock()->getCurrentTime();
-    if (secs >= curr) {
+    // The device may have run far ahead (corrupt RTC): then the phone's time is accepted backwards
+    // too, and contact lastmod is pulled back with it so the bad time can't return after a reboot.
+    bool runaway = secs >= RTC_TIME_SANE_MIN && secs < curr && curr - secs > 3600;
+    if (secs >= RTC_TIME_SANE_MAX) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);   // never accept an implausible far-future time
+    } else if (secs >= curr || runaway) {
       getRTCClock()->setCurrentTime(secs);
+      if (runaway && clampContactsLastmod(secs) > 0) {
+        dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+      }
       _ts.clock_restored = false;   // the app's time is a real one
       _app_time_lock_until = secs + APP_TIME_HOLDOFF_SECS;
       noteTimeSource(TIME_SOURCE_APP);

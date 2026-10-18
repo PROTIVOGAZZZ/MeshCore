@@ -1,0 +1,45 @@
+name: Build T3S3 Companion BLE (1.18 RU + PS)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'Aloha-1.18-cyrillic-ps'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - LilyGo_T3S3_sx1262_companion_radio_ble
+    steps:
+
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Cache ESP32 PS Core
+        uses: actions/cache@v5
+        with:
+          path: ~/.platformio/ps
+          key: ${{ runner.os }}-ps-core-${{ hashFiles('tools/ps_framework.py') }}
+
+      - name: Install ESP32 PS Core
+        run: python tools/ps_framework.py
+
+      - name: Build Firmware
+        env:
+          FIRMWARE_VERSION: v1.18.0b1-ru-ps1
+        run: |
+          mkdir -p out
+          /usr/bin/env bash build.sh build-firmware ${{ matrix.target }}
+
+      - name: Upload Workflow Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}-1.18-ru-ps
+          path: out

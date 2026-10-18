@@ -92,7 +92,8 @@ protected:
     memset(connections, 0, sizeof(connections));
   }
 
-  void bootstrapRTCfromContacts();
+  int bootstrapRTCfromContacts();   // returns number of contacts whose corrupt lastmod was repaired
+  int clampContactsLastmod(uint32_t max_time);
 
   void resetContacts() {
     memset(contacts, 0, sizeof(contacts[0])*MAX_ANON_CONTACTS);   // set all to have type = ADV_TYPE_NONE(0)
